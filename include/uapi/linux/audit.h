@@ -153,6 +153,10 @@
 #define AUDIT_INTEGRITY_RULE	    1805 /* policy rule */
 #define AUDIT_INTEGRITY_EVM_XATTR   1806 /* New EVM-covered xattr */
 #define AUDIT_INTEGRITY_POLICY_RULE 1807 /* IMA policy rules */
+#define AUDIT_INTEGRITY_POLICY_LOAD	1808 /* IPE Policy Load */
+#define AUDIT_INTEGRITY_POLICY_ACTIVATE	1809 /* IPE Policy Activation */
+#define AUDIT_INTEGRITY_EVENT		1810 /* IPE Evaluation Event */
+#define AUDIT_INTEGRITY_MODE		1811 /* IPE Mode Switch */
 
 #define AUDIT_KERNEL		2000	/* Asynchronous audit record. NOT A REQUEST. */
 

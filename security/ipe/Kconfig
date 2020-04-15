@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Integrity Policy Enforcement (IPE) configuration
+#
+
+menuconfig SECURITY_IPE
+	bool "Integrity Policy Enforcement (IPE)"
+	depends on SECURITY && AUDIT
+	select SYSTEM_DATA_VERIFICATION
+	help
+	  This option enables the Integrity Policy Enforcement subsystem
+	  allowing systems to enforce integrity having no dependencies
+	  on filesystem metadata, making its decisions based off of kernel-
+	  resident features and data structures. A key feature of IPE is a
+	  customizable policy to allow admins to reconfigure integrity
+	  requirements on the fly.
+
+	  If unsure, answer N.
+
+if SECURITY_IPE
+
+config SECURITY_IPE_BOOT_POLICY
+	string "Integrity policy to apply on system startup"
+	help
+	  This option specifies a filepath to a IPE policy that is compiled
+	  into the kernel. This policy will be enforced until a policy update
+	  is deployed via the "ipe.policy" sysctl.
+
+	  If unsure, leave blank.
+
+config SECURITY_IPE_PERMISSIVE_SWITCH
+	bool "Enable the ability to switch IPE to permissive mode"
+	default y
+	help
+	  This option enables two ways of switching IPE to permissive mode,
+	  a sysctl (if enabled), `ipe.enforce`, or a kernel command line
+	  parameter, `ipe.enforce`. If either of these are set to 0, files
+	  will be subject to IPE's policy, audit messages will be logged, but
+	  the policy will not be enforced.
+
+	  If unsure, answer Y.
+
+endif
