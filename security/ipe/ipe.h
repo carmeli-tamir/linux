@@ -16,5 +16,6 @@
 
 extern int ipe_enforce;
 extern int ipe_success_audit;
+extern int ipe_strict_parse;
 
 #endif /* IPE_H */

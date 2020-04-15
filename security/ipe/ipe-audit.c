@@ -17,7 +17,8 @@
 #include <crypto/sha1_base.h>
 
 #define ACTION_STR(a) ((a) == ipe_action_allow ? "ALLOW" : "DENY")
-
+#define POLICY_LOAD_FSTR	"IPE policy_name=\"%s\" policy_version=%hu.%hu.%hu sha1="
+#define POLICY_ACTIVATE_STR	"IPE policy_name=\"%s\" policy_version=%hu.%hu.%hu"
 #define IPE_UNKNOWN		"UNKNOWN"
 
 /* Keep in sync with ipe_op in ipe-hooks.h */
@@ -209,4 +210,88 @@ void ipe_audit_match(const struct ipe_engine_ctx *ctx,
 				 ACTION_STR(action));
 
 	audit_log_end(ab);
+}
+
+/**
+ * ipe_audit_policy_load: Emit an audit event that an IPE policy has been
+ *			  loaded, with the name of the policy, the policy
+ *			  version triple, and a flat hash of the content.
+ * @pol: The parsed policy to derive the policy_name and policy_version
+ *	 triple.
+ * @raw: The raw content that was passed to the ipe.policy sysctl to derive
+ *	 the sha1 hash.
+ * @raw_size: the length of @raw.
+ * @tfm: shash structure allocated by the caller, used to fingerprint the
+ *	 policy being deployed
+ */
+void ipe_audit_policy_load(const struct ipe_policy *pol, const uint8_t *raw,
+			   size_t raw_size, struct crypto_shash *tfm)
+{
+	int rc = 0;
+	struct audit_buffer *ab;
+	u8 digest[SHA1_DIGEST_SIZE];
+	SHASH_DESC_ON_STACK(desc, tfm);
+
+	ab = audit_log_start(audit_context(), GFP_KERNEL,
+			     AUDIT_INTEGRITY_POLICY_LOAD);
+	if (!ab)
+		return;
+
+	audit_log_format(ab, POLICY_LOAD_FSTR, pol->policy_name,
+			 pol->policy_version.major, pol->policy_version.minor,
+			 pol->policy_version.rev);
+
+	desc->tfm = tfm;
+
+	if (crypto_shash_init(desc) != 0)
+		goto err;
+
+	if (crypto_shash_update(desc, raw, raw_size) != 0)
+		goto err;
+
+	if (crypto_shash_final(desc, digest) != 0)
+		goto err;
+
+	audit_log_n_hex(ab, digest, crypto_shash_digestsize(tfm));
+
+err:
+	if (rc != 0)
+		audit_log_format(ab, "ERR(%d)", rc);
+
+	audit_log_end(ab);
+}
+
+/**
+ * ipe_audit_policy_activation: Emit an audit event that a specific policy
+ *				was activated as the active policy.
+ * @pol: policy that is being activated
+ */
+void ipe_audit_policy_activation(const struct ipe_policy *pol)
+{
+	struct audit_buffer *ab;
+
+	ab = audit_log_start(audit_context(), GFP_KERNEL,
+			     AUDIT_INTEGRITY_POLICY_ACTIVATE);
+
+	if (!ab)
+		return;
+
+	audit_log_format(ab, POLICY_ACTIVATE_STR, pol->policy_name,
+			 pol->policy_version.major, pol->policy_version.minor,
+			 pol->policy_version.rev);
+
+	audit_log_end(ab);
+}
+
+/**
+ * ipe_audit_unset_remap: Emit an warning indicating that the operation
+ *			  represented by @op is unset and will implicitly
+ *			  allow everything under that op.
+ * @op: the operation to emit an audit message for.
+ */
+void ipe_audit_unset_remap(enum ipe_op op)
+{
+	pr_warn("op=%s default was unset, remapping to \"DEFAULT op=%s action=ALLOW\" for compatibility",
+		audit_op_names[op],
+		audit_op_names[op]);
 }

@@ -59,4 +59,14 @@ struct ipe_policy {
 	struct ipe_rule_table ops[ipe_op_max - 1];
 };
 
+bool ipe_is_valid_policy(const struct ipe_policy *old,
+			 const struct ipe_policy *new);
+
+bool ipe_is_active_policy(const struct ipe_policy *policy);
+
+int ipe_update_active_policy(const struct ipe_policy *old,
+			     const struct ipe_policy *new);
+
+int ipe_activate_policy(const struct ipe_policy *policy);
+
 #endif /* IPE_POLICY_H */

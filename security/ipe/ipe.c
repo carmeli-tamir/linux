@@ -6,6 +6,7 @@
 #include "ipe.h"
 #include "ipe-policy.h"
 #include "ipe-hooks.h"
+#include "ipe-secfs.h"
 #include "ipe-sysfs.h"
 
 #include <linux/module.h>
@@ -60,3 +61,4 @@ DEFINE_LSM(ipe) = {
 
 int ipe_enforce = 1;
 int ipe_success_audit;
+int ipe_strict_parse;

@@ -23,6 +23,8 @@
 #define IPE_OP_KMODULE		"KMODULE"
 #define IPE_OP_KERNEL_READ	"KERNEL_READ"
 
+#define IPE_UNKNOWN		"UNKNOWN"
+
 struct ipe_prop_reg {
 	struct rb_node node;
 	const struct ipe_property *prop;
