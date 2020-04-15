@@ -35,6 +35,7 @@
 #include <linux/falloc.h>
 #include <linux/uaccess.h>
 #include <linux/suspend.h>
+#include <linux/security.h>
 #include "internal.h"
 
 struct bdev_inode {
@@ -773,11 +774,18 @@ static struct inode *bdev_alloc_inode(struct super_block *sb)
 	struct bdev_inode *ei = kmem_cache_alloc(bdev_cachep, GFP_KERNEL);
 	if (!ei)
 		return NULL;
+
+	if (unlikely(security_bdev_alloc(&ei->bdev))) {
+		kmem_cache_free(bdev_cachep, ei);
+		return NULL;
+	}
+
 	return &ei->vfs_inode;
 }
 
 static void bdev_free_inode(struct inode *inode)
 {
+	security_bdev_free(&BDEV_I(inode)->bdev);
 	kmem_cache_free(bdev_cachep, BDEV_I(inode));
 }
 
