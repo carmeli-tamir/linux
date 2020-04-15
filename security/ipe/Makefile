@@ -27,3 +27,7 @@ obj-$(CONFIG_SECURITY_IPE) += \
 	ipe-sysfs.o \
 
 clean-files := ipe-bp.c
+
+obj-$(CONFIG_IPE_BOOT_PROP) += ipe-pin.o
+
+obj-$(CONFIG_SECURITY_IPE) += properties/

@@ -9,6 +9,8 @@
 #include "ipe-policy.h"
 #include "ipe-engine.h"
 #include "ipe-audit.h"
+#include "ipe-pin.h"
+#include "utility.h"
 
 #include <linux/types.h>
 #include <linux/fs.h>
@@ -204,6 +206,8 @@ int ipe_process_event(const struct file *file, enum ipe_op op,
 	ctx = build_ctx(file, op, hook);
 	if (IS_ERR(ctx))
 		goto cleanup;
+
+	ipe_pin_superblock(ctx->file);
 
 	rc = evaluate(ctx);
 
