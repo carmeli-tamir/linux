@@ -10,6 +10,7 @@
 #include "ipe-engine.h"
 #include "ipe-audit.h"
 #include "ipe-pin.h"
+#include "ipe-blobs.h"
 #include "utility.h"
 
 #include <linux/types.h>
@@ -115,6 +116,9 @@ static struct ipe_engine_ctx *build_ctx(const struct file *file,
 	local->file = file;
 	local->op = op;
 	local->hook = hook;
+
+	if (has_bdev(file))
+		local->sec_bdev = ipe_bdev(bdev(file));
 
 	return local;
 }

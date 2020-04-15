@@ -10,10 +10,12 @@
 
 #include <linux/types.h>
 #include <linux/fs.h>
+#include <linux/lsm_hooks.h>
 
 #define IPE_MODE_ENFORCE	"enforce"
 #define IPE_MODE_PERMISSIVE	"permissive"
 
+extern struct lsm_blob_sizes ipe_blobs;
 extern int ipe_enforce;
 extern int ipe_success_audit;
 extern int ipe_strict_parse;

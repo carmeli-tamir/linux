@@ -15,6 +15,7 @@
 #include <linux/mman.h>
 #include <linux/mm.h>
 #include <linux/security.h>
+#include <linux/device-mapper.h>
 
 /**
  * ipe_on_exec: LSM hook called on the exec family of system calls.
