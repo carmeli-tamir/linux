@@ -11,31 +11,30 @@
 #define DM_VERITY_ROOT_HASH_VERIFICATION "DM Verity Sig Verification"
 #define DM_VERITY_ROOT_HASH_VERIFICATION_OPT_SIG_KEY "root_hash_sig_key_desc"
 
-struct dm_verity_sig_opts {
+struct dm_verity_sig {
+	char *signature_key_desc;
 	unsigned int sig_size;
 	u8 *sig;
+	bool passed;
 };
 
 #ifdef CONFIG_DM_VERITY_VERIFY_ROOTHASH_SIG
 
 #define DM_VERITY_ROOT_HASH_VERIFICATION_OPTS 2
 
-int verity_verify_root_hash(const void *data, size_t data_len,
-			    const void *sig_data, size_t sig_len);
+int verity_verify_root_hash(const struct dm_verity *v);
 bool verity_verify_is_sig_opt_arg(const char *arg_name);
 
 int verity_verify_sig_parse_opt_args(struct dm_arg_set *as, struct dm_verity *v,
-				    struct dm_verity_sig_opts *sig_opts,
-				    unsigned int *argc, const char *arg_name);
+				    unsigned int *argc);
 
-void verity_verify_sig_opts_cleanup(struct dm_verity_sig_opts *sig_opts);
+void verity_verify_dtr(struct dm_verity *v);
 
 #else
 
 #define DM_VERITY_ROOT_HASH_VERIFICATION_OPTS 0
 
-int verity_verify_root_hash(const void *data, size_t data_len,
-			    const void *sig_data, size_t sig_len)
+int verity_verify_root_hash(const struct dm_verity *v)
 {
 	return 0;
 }
@@ -46,13 +45,12 @@ bool verity_verify_is_sig_opt_arg(const char *arg_name)
 }
 
 int verity_verify_sig_parse_opt_args(struct dm_arg_set *as, struct dm_verity *v,
-				    struct dm_verity_sig_opts *sig_opts,
-				    unsigned int *argc, const char *arg_name)
+				    unsigned int *argc)
 {
 	return -EINVAL;
 }
 
-void verity_verify_sig_opts_cleanup(struct dm_verity_sig_opts *sig_opts)
+void verity_verify_dtr(struct dm_verity *v)
 {
 }
 
