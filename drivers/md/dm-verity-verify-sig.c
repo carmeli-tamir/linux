@@ -8,7 +8,10 @@
 #include <linux/device-mapper.h>
 #include <linux/verification.h>
 #include <keys/user-type.h>
+#include <linux/security.h>
+#include <linux/list.h>
 #include <linux/module.h>
+#include "dm-core.h"
 #include "dm-verity.h"
 #include "dm-verity-verify-sig.h"
 
@@ -22,6 +25,16 @@ MODULE_PARM_DESC(require_signatures,
 #define DM_VERITY_IS_SIG_FORCE_ENABLED() \
 	(require_signatures != false)
 
+static void destroy_verity_sig(struct dm_verity_sig *sig_info)
+{
+	if (!sig_info)
+		return;
+
+	kfree(sig_info->sig);
+	kfree(sig_info->signature_key_desc);
+	kfree(sig_info);
+}
+
 bool verity_verify_is_sig_opt_arg(const char *arg_name)
 {
 	return (!strcasecmp(arg_name,
@@ -29,7 +42,7 @@ bool verity_verify_is_sig_opt_arg(const char *arg_name)
 }
 
 static int verity_verify_get_sig_from_key(const char *key_desc,
-					struct dm_verity_sig_opts *sig_opts)
+					  struct dm_verity_sig  *sig_info)
 {
 	struct key *key;
 	const struct user_key_payload *ukp;
@@ -48,14 +61,14 @@ static int verity_verify_get_sig_from_key(const char *key_desc,
 		goto end;
 	}
 
-	sig_opts->sig = kmalloc(ukp->datalen, GFP_KERNEL);
-	if (!sig_opts->sig) {
+	sig_info->sig = kmalloc(ukp->datalen, GFP_KERNEL);
+	if (!sig_info->sig) {
 		ret = -ENOMEM;
 		goto end;
 	}
-	sig_opts->sig_size = ukp->datalen;
+	sig_info->sig_size = ukp->datalen;
 
-	memcpy(sig_opts->sig, ukp->data, sig_opts->sig_size);
+	memcpy(sig_info->sig, ukp->data, sig_info->sig_size);
 
 end:
 	up_read(&key->sem);
@@ -64,70 +77,132 @@ end:
 	return ret;
 }
 
+/**
+ * Parse any signature verification arguments.
+ *	This function will populate v->sig, it is the caller's
+ *	responsibility to free this structure via verity_verify_dtr
+ *
+ * @as: argument set passed in to parse
+ * @v: verity context structure. Should have a NULL v->sig member.
+ * @argc: current argument number
+ */
 int verity_verify_sig_parse_opt_args(struct dm_arg_set *as,
 				     struct dm_verity *v,
-				     struct dm_verity_sig_opts *sig_opts,
-				     unsigned int *argc,
-				     const char *arg_name)
+				     unsigned int *argc)
 {
 	struct dm_target *ti = v->ti;
+	struct dm_verity_sig *sig_info = NULL;
 	int ret = 0;
 	const char *sig_key = NULL;
 
 	if (!*argc) {
 		ti->error = DM_VERITY_VERIFY_ERR("Signature key not specified");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto cleanup;
+	}
+
+	sig_info = kzalloc(sizeof(*sig_info), GFP_KERNEL);
+	if (!sig_info) {
+		ret = -ENOMEM;
+		goto cleanup;
 	}
 
 	sig_key = dm_shift_arg(as);
 	(*argc)--;
 
-	ret = verity_verify_get_sig_from_key(sig_key, sig_opts);
-	if (ret < 0)
+	ret = verity_verify_get_sig_from_key(sig_key, sig_info);
+	if (ret < 0) {
 		ti->error = DM_VERITY_VERIFY_ERR("Invalid key specified");
+		goto cleanup;
+	}
 
-	v->signature_key_desc = kstrdup(sig_key, GFP_KERNEL);
-	if (!v->signature_key_desc)
-		return -ENOMEM;
+	sig_info->signature_key_desc = kstrdup(sig_key, GFP_KERNEL);
+	if (!sig_info->signature_key_desc) {
+		ret = -ENOMEM;
+		goto cleanup;
+	}
 
+	v->sig = sig_info;
+	sig_info = NULL;
+cleanup:
+	if (sig_info)
+		destroy_verity_sig(sig_info);
 	return ret;
 }
 
-/*
+/**
  * verify_verify_roothash - Verify the root hash of the verity hash device
  *			     using builtin trusted keys.
  *
- * @root_hash: For verity, the roothash/data to be verified.
- * @root_hash_len: Size of the roothash/data to be verified.
- * @sig_data: The trusted signature that verifies the roothash/data.
- * @sig_len: Size of the signature.
+ * @v: dm_verity structure containing all context for the dm_verity
+ *	operation.
  *
  */
-int verity_verify_root_hash(const void *root_hash, size_t root_hash_len,
-			    const void *sig_data, size_t sig_len)
+int verity_verify_root_hash(const struct dm_verity *v)
 {
-	int ret;
+	int ret = 0;
+	char *root_hash = NULL;
+	size_t root_hash_size = 0;
+	struct dm_verity_sig *sig_target = NULL;
 
-	if (!root_hash || root_hash_len == 0)
-		return -EINVAL;
-
-	if (!sig_data  || sig_len == 0) {
-		if (DM_VERITY_IS_SIG_FORCE_ENABLED())
-			return -ENOKEY;
-		else
-			return 0;
+	if (!v || !v->ti || !v->root_digest || v->digest_size == 0) {
+		ret = -EINVAL;
+		goto cleanup;
 	}
 
-	ret = verify_pkcs7_signature(root_hash, root_hash_len, sig_data,
-				sig_len, NULL, VERIFYING_UNSPECIFIED_SIGNATURE,
-				NULL, NULL);
+	sig_target = v->sig;
 
+	if (!sig_target || !sig_target->sig || sig_target->sig_size == 0) {
+		if (DM_VERITY_IS_SIG_FORCE_ENABLED()) {
+			ret = -ENOKEY;
+			goto cleanup;
+		} else {
+			goto cleanup;
+		}
+	}
+
+	/*
+	 * If signature has passed validation once, assume
+	 * that future signatures will pass.
+	 */
+	if (sig_target->passed)
+		goto cleanup;
+
+	root_hash_size = v->digest_size * 2;
+	root_hash = kzalloc(root_hash_size, GFP_KERNEL);
+	if (!root_hash) {
+		ret = -ENOMEM;
+		goto cleanup;
+	}
+
+	bin2hex(root_hash, v->root_digest, v->digest_size);
+
+	ret = verify_pkcs7_signature(root_hash, root_hash_size, v->sig->sig,
+				     v->sig->sig_size, NULL,
+				     VERIFYING_UNSPECIFIED_SIGNATURE, NULL,
+				     NULL);
+	if (ret != 0)
+		goto cleanup;
+
+	sig_target->passed = true;
+
+	ret = security_bdev_setsecurity(dm_table_get_md(v->ti->table)->bdev,
+					DM_VERITY_SIGNATURE_SEC_NAME,
+					v->sig->sig, v->sig->sig_size);
+cleanup:
+	kfree(root_hash);
 	return ret;
 }
 
-void verity_verify_sig_opts_cleanup(struct dm_verity_sig_opts *sig_opts)
+/**
+ * Performs destruction / cleanup of a valid dm_verity_sig struct
+ *
+ * @v: dm_verity structure containing the dm_verity_sig struct to
+ *	be freed.
+ */
+
+void verity_verify_dtr(struct dm_verity *v)
 {
-	kfree(sig_opts->sig);
-	sig_opts->sig = NULL;
-	sig_opts->sig_size = 0;
+	destroy_verity_sig(v->sig);
+	v->sig = NULL;
 }
